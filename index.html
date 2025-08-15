@@ -1,342 +1,575 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>課程預約系統</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: "Inter", sans-serif; background-color: #f3f4f6; }
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex; justify-content: center; align-items: center;
-        }
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 4px;
-        }
-        .day-header, .day-cell {
-            padding: 8px; text-align: center; font-size: 0.875rem;
-            border-radius: 0.375rem;
-        }
-        .day-header { font-weight: 600; color: #4b5563; }
-        .unavailable {
-            background-color: #f3f4f6; color: #d1d5db; cursor: not-allowed;
-        }
-        .available {
-            background-color: #d1fae5; color: #10b981; cursor: pointer;
-            transition: all 0.2s ease-in-out;
-        }
-        .available:hover {
-            background-color: #10b981; color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
-        .full {
-            background-color: #fecaca; color: #ef4444; cursor: not-allowed;
-            position: relative;
-        }
-        .selected {
-            background-color: #3b82f6; color: white;
-            transform: scale(1.05);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
-        .time-slot {
-            padding: 4px 8px; border-radius: 0.25rem; font-size: 0.75rem;
-            margin-top: 4px; transition: all 0.2s ease-in-out;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>教練預約系統</title>
+  <style>
+    * {margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --grad1:#667eea; --grad2:#764ba2; --ok:#28a745; --warn:#dc3545; --muted:#6c757d;
+      --panel:#fff; --ink:#333; --bg:#f3f5fb; --accent:#667eea; --shadow:0 10px 30px rgba(0,0,0,.2);
+    }
+    body{font-family:"Segoe UI", Arial, sans-serif; min-height:100vh; color:var(--ink);
+      background:linear-gradient(135deg, var(--grad1) 0%, var(--grad2) 100%)}
+    .container{max-width:1200px;margin:0 auto;padding:20px}
+    .page{display:none;background:var(--panel);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+    .page.active{display:block}
+    .header{background:linear-gradient(45deg,var(--grad1),var(--grad2));color:#fff;padding:32px;text-align:center}
+    .header h1{font-size:32px;margin-bottom:6px}
+    .form-container{padding:32px}
+    .form-group{margin-bottom:18px}
+    .form-group label{display:block;margin-bottom:8px;font-weight:700;color:#555}
+    .form-group input,.form-group select{width:100%;padding:14px;border:2px solid #e1e1e1;border-radius:10px;font-size:16px;transition:.2s}
+    .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(102,126,234,.15)}
+    .btn{background:linear-gradient(45deg,var(--grad1),var(--grad2));color:#fff;padding:14px 26px;border:none;border-radius:12px;font-size:16px;cursor:pointer;transition:.2s;margin:8px;box-shadow:0 6px 16px rgba(0,0,0,.15)}
+    .btn:hover{transform:translateY(-2px)}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .btn-coach{background:linear-gradient(45deg,#ff6b6b,#ee5a24)}
+
+    /* 時段格線 */
+    .schedule-grid{display:grid;grid-template-columns:auto repeat(4,1fr);gap:2px;margin:26px 0;border:2px solid #e8e8e8;border-radius:12px;overflow:hidden;background:#e9ecef}
+    .time-header,.day-header{background:#f8f9fa;padding:14px;font-weight:700;text-align:center;border-right:1px solid #e5e5e5}
+    .time-slot{padding:18px;text-align:center;cursor:pointer;transition:.15s;border:1px solid #f1f1f1;background:#fff;position:relative}
+    .time-slot:hover{background:#f0f8ff}
+    .time-slot.available{background:#e8f8ee}
+    .time-slot.occupied{background:#fdecec;cursor:not-allowed;color:#a33;border-color:#f5c6cb}
+    .time-slot.selected{background:#e6f0ff;border-color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent)}
+
+    .student-info{background:#fff;margin:18px 0;padding:22px;border-radius:14px;box-shadow:0 8px 22px rgba(0,0,0,.12);display:none;border:2px solid var(--accent)}
+    .student-info.show{display:block;animation:slideDown .3s ease-out}
+    @keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+    .student-info h4{color:var(--accent);margin-bottom:12px;font-size:20px;border-bottom:2px solid var(--accent);padding-bottom:6px}
+    .student-info h5{color:#444;margin:12px 0 8px}
+
+    /* 漢堡/側欄 */
+    .hamburger{position:fixed;top:20px;right:20px;width:52px;height:52px;background:rgba(255,255,255,.95);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:1000}
+    .hamburger span{display:block;width:26px;height:3px;background:#333;margin:3px 0;transition:.2s}
+    .menu{position:fixed;top:0;right:-320px;width:300px;height:100vh;background:#fff;box-shadow:-6px 0 18px rgba(0,0,0,.25);padding:84px 24px 24px;transition:.25s;z-index:999}
+    .menu.open{right:0}
+    .menu-item{padding:14px;border-bottom:1px solid #eee;cursor:pointer;border-radius:8px}
+    .menu-item:hover{background:#f8f9fa}
+
+    /* Modal */
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001}
+    .modal-content{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:26px;border-radius:14px;max-width:560px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 24px rgba(0,0,0,.25)}
+    .close{float:right;font-size:28px;font-weight:700;cursor:pointer;color:#666}
+    .reservation-item{background:#f8f9fa;margin:10px 0;padding:14px;border-radius:10px;border-left:4px solid var(--accent)}
+    .level-badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;color:#fff;margin-left:8px}
+    .level-低級{background:#28a745}.level-中級{background:#ffc107;color:#333}.level-高級{background:#dc3545}
+
+    .error{color:#dc3545;font-size:14px;margin-top:5px}
+    .success{color:#28a745;font-size:14px;margin-top:5px}
+
+    /* 狀態徽章 */
+    .status-indicator{position:fixed;top:84px;right:20px;padding:10px 12px;border-radius:8px;font-size:12px;z-index:1000}
+    .status-connected{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+    .status-offline{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+
+    @media (max-width:768px){
+      .schedule-grid{font-size:14px}
+      .time-slot{padding:12px 6px}
+      .header h1{font-size:24px}
+      .hamburger{top:14px;right:14px}
+    }
+  </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+<body>
+  <div id="statusIndicator" class="status-indicator status-offline" aria-live="polite">離線模式</div>
 
-    <!-- 彈窗表單 -->
-    <div id="popupModal" class="modal-overlay z-50">
-        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-lg mx-4">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">學員資料填寫</h2>
-            <form id="bookingForm" class="space-y-4">
-                <div>
-                    <label for="name" class="block text-sm font-medium text-gray-700">名字</label>
-                    <input type="text" id="name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="lineId" class="block text-sm font-medium text-gray-700">Line ID</label>
-                    <input type="text" id="lineId" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="phone" class="block text-sm font-medium text-gray-700">電話</label>
-                    <input type="tel" id="phone" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="studentName" class="block text-sm font-medium text-gray-700">學員名字</label>
-                    <input type="text" id="studentName" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="level" class="block text-sm font-medium text-gray-700">學員程度</label>
-                    <select id="level" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                        <option value="初級">初級</option>
-                        <option value="中級">中級</option>
-                        <option value="高級">高級</option>
-                    </select>
-                </div>
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out shadow-md">送出</button>
-            </form>
+  <!-- 漢堡選單 -->
+  <button class="hamburger" id="hamburger" aria-label="開啟選單">
+    <span></span><span></span><span></span>
+  </button>
+  <aside class="menu" id="menu">
+    <div class="menu-item" id="miQuery">查詢預約</div>
+    <div class="menu-item" id="miCancel">取消預約</div>
+    <div class="menu-item" id="miCoach">教練專區</div>
+  </aside>
+
+  <div class="container">
+    <!-- 首頁：基本資料填寫 -->
+    <section class="page active" id="homePage">
+      <header class="header">
+        <h1>教練預約系統</h1>
+        <p>請填寫以下資料進行預約</p>
+      </header>
+      <div class="form-container">
+        <div class="form-group"><label for="name">姓名 *</label><input type="text" id="name" required></div>
+        <div class="form-group"><label for="lineId">Line ID *</label><input type="text" id="lineId" required></div>
+        <div class="form-group"><label for="studentName">學員名 *</label><input type="text" id="studentName" required></div>
+        <div class="form-group"><label for="phone">電話 *</label><input type="tel" id="phone" required></div>
+        <div class="form-group"><label for="level">程度 *</label>
+          <select id="level" required>
+            <option value="">請選擇程度</option>
+            <option value="低級">低級</option>
+            <option value="中級">中級</option>
+            <option value="高級">高級</option>
+          </select>
         </div>
+        <div id="formError" class="error" role="alert"></div>
+        <div style="text-align:center;margin-top:22px">
+          <button class="btn" id="btnEnter">進入預約系統</button>
+          <button class="btn btn-coach" id="btnCoach">我是教練</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 預約頁面 -->
+    <section class="page" id="reservationPage">
+      <header class="header">
+        <h1>選擇預約時段</h1>
+        <p>每次課程為當月相同時段，請選擇合適的時間</p>
+      </header>
+      <div class="form-container">
+        <div class="schedule-grid" id="scheduleGrid" aria-live="polite">
+          <div class="time-header">時間</div>
+          <div class="day-header">週一</div>
+          <div class="day-header">週二</div>
+          <div class="day-header">週四</div>
+          <div class="day-header">週五</div>
+
+          <!-- 列：17:00-18:00 -->
+          <div class="time-header">17:00-18:00</div>
+          <div class="time-slot" data-day="1" data-time="17:00-18:00">可預約</div>
+          <div class="time-slot" data-disabled>—</div>
+          <div class="time-slot" data-disabled>—</div>
+          <div class="time-slot" data-day="5" data-time="17:00-18:00">可預約</div>
+
+          <!-- 列：18:00-19:00 -->
+          <div class="time-header">18:00-19:00</div>
+          <div class="time-slot" data-day="1" data-time="18:00-19:00">可預約</div>
+          <div class="time-slot" data-disabled>—</div>
+          <div class="time-slot" data-disabled>—</div>
+          <div class="time-slot" data-day="5" data-time="18:00-19:00">可預約</div>
+
+          <!-- 列：19:00-20:00 -->
+          <div class="time-header">19:00-20:00</div>
+          <div class="time-slot" data-day="1" data-time="19:00-20:00">可預約</div>
+          <div class="time-slot" data-day="2" data-time="19:00-20:00">可預約</div>
+          <div class="time-slot" data-day="4" data-time="19:00-20:00">可預約</div>
+          <div class="time-slot" data-day="5" data-time="19:00-20:00">可預約</div>
+        </div>
+
+        <div class="student-info" id="studentInfo">
+          <h4>時段詳情</h4>
+          <div id="slotDetails"></div>
+          <button class="btn" id="registerBtn" style="display:none">報名此時段</button>
+          <div id="slotMessage" style="margin-top:8px"></div>
+        </div>
+
+        <div style="text-align:center;margin-top:22px"><button class="btn" id="btnBack">返回</button></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 查詢預約 Modal -->
+  <div class="modal" id="queryModal" role="dialog" aria-modal="true" aria-labelledby="qTitle">
+    <div class="modal-content">
+      <span class="close" data-close="queryModal">&times;</span>
+      <h2 id="qTitle">查詢預約</h2>
+      <div class="form-group"><label>請輸入預約電話：</label><input type="tel" id="queryPhone"></div>
+      <button class="btn" id="btnQueryDo">查詢</button>
+      <div id="queryResult" style="margin-top:10px"></div>
     </div>
+  </div>
 
-    <!-- 主頁面 -->
-    <div id="mainContent" class="hidden container mx-auto p-8 bg-white rounded-xl shadow-2xl">
-        <h1 class="text-4xl font-bold text-gray-800 mb-6 text-center">課程預約系統</h1>
-        <div id="booking-status" class="text-center font-semibold text-lg mb-6"></div>
-        <div class="calendar-grid" id="calendar"></div>
+  <!-- 取消預約 Modal -->
+  <div class="modal" id="cancelModal" role="dialog" aria-modal="true" aria-labelledby="cTitle">
+    <div class="modal-content">
+      <span class="close" data-close="cancelModal">&times;</span>
+      <h2 id="cTitle">取消預約</h2>
+      <div class="form-group"><label>請輸入預約電話：</label><input type="tel" id="cancelPhone"></div>
+      <button class="btn" id="btnCancelList">查詢可取消項目</button>
+      <div id="cancelResult" style="margin-top:10px"></div>
+    </div>
+  </div>
 
-        <hr class="my-10 border-t border-gray-200">
+  <!-- 教練專區 Modal -->
+  <div class="modal" id="coachModal" role="dialog" aria-modal="true" aria-labelledby="coachTitle">
+    <div class="modal-content">
+      <span class="close" data-close="coachModal">&times;</span>
+      <h2 id="coachTitle">教練專區</h2>
+      <div id="coachResult" style="margin:12px 0"></div>
+      <button class="btn" id="btnLoadAll">載入所有預約</button>
+    </div>
+  </div>
 
-        <div class="space-y-6">
-            <h2 class="text-2xl font-bold text-gray-800 text-center">查詢或取消預約</h2>
-            <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-                <input type="tel" id="queryPhone" placeholder="輸入電話號碼" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm w-full sm:w-auto">
-                <div class="flex space-x-4">
-                    <button onclick="queryBooking()" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out w-full sm:w-auto">查詢</button>
-                    <button onclick="cancelBooking()" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out w-full sm:w-auto">取消</button>
-                </div>
+  <!-- 主程式（單一模組腳本） -->
+  <script type="module">
+    /* ================= Firebase 初始化（v9+ 模組版） ================= */
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js';
+    import { getDatabase, ref, set, get, remove, push, onValue } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js';
+
+    // TODO: 將以下替換成你的 Firebase 設定；若留空或錯誤，系統會自動切換為離線本地模式
+    const firebaseConfig = {
+      apiKey: "",
+      authDomain: "",
+      databaseURL: "",
+      projectId: "",
+      storageBucket: "",
+      messagingSenderId: "",
+      appId: ""
+    };
+
+    const state = {
+      firebase: { initialized:false, connected:false, db:null },
+      currentUser: null,
+      selectedSlot: null,
+      isCoach: false,
+      reservationsCache: {} // 最新載入的 reservations（方便重繪）
+    };
+
+    const CAPACITY = 4;
+
+    function setStatus(connected){
+      const el = document.getElementById('statusIndicator');
+      if(connected){ el.textContent='Firebase已連線'; el.className='status-indicator status-connected'; }
+      else { el.textContent='離線模式'; el.className='status-indicator status-offline'; }
+    }
+
+    // 嘗試初始化 Firebase
+    try {
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+      state.firebase.db = db; state.firebase.initialized = true;
+
+      // 監聽連線狀態
+      const connectedRef = ref(db, '.info/connected');
+      onValue(connectedRef, snap => {
+        state.firebase.connected = !!snap.val();
+        setStatus(state.firebase.connected);
+      });
+
+      // 監聽 reservations 即時更新
+      const rref = ref(db, 'reservations');
+      onValue(rref, snap => {
+        const data = snap.val() || {};
+        state.reservationsCache = data;
+        updateGridFromData(data);
+        // 若正在看詳情，重新渲染
+        if(state.selectedSlot){ showSlotDetails(state.selectedSlot); }
+      });
+
+    } catch (err) {
+      console.warn('Firebase 初始化失敗，改用本地模式：', err);
+      setStatus(false);
+    }
+
+    /* ================= 資料存取層（Firebase + localStorage 備援） ================= */
+    const LS_KEY = 'coach_reservations';
+
+    const DataManager = {
+      async getAll(){
+        if(state.firebase.initialized && state.firebase.connected){
+          try { const snap = await get(ref(state.firebase.db, 'reservations')); return snap.val() || {}; }
+          catch(e){ console.warn('Firebase 讀取失敗，改用本地：', e); return this.getLocal(); }
+        }
+        return this.getLocal();
+      },
+      getLocal(){ const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : {}; },
+      setLocal(data){ localStorage.setItem(LS_KEY, JSON.stringify(data)); },
+
+      async add(slotKey, reservation){
+        const id = Date.now().toString();
+        if(state.firebase.initialized && state.firebase.connected){
+          try { const newRef = push(ref(state.firebase.db, `reservations/${slotKey}`)); await set(newRef, reservation); return newRef.key; }
+          catch(e){ console.warn('Firebase 寫入失敗，改用本地：', e); return this.addLocal(slotKey, reservation, id); }
+        }
+        return this.addLocal(slotKey, reservation, id);
+      },
+      addLocal(slotKey, reservation, id){
+        const all = this.getLocal();
+        if(!all[slotKey]) all[slotKey] = {};
+        all[slotKey][id] = reservation; this.setLocal(all); window.dispatchEvent(new Event('storage')); return id;
+      },
+
+      async remove(slotKey, id){
+        if(state.firebase.initialized && state.firebase.connected){
+          try { await remove(ref(state.firebase.db, `reservations/${slotKey}/${id}`)); return true; }
+          catch(e){ console.warn('Firebase 刪除失敗，改用本地：', e); this.removeLocal(slotKey, id); return true; }
+        }
+        this.removeLocal(slotKey, id); return true;
+      },
+      removeLocal(slotKey, id){
+        const all = this.getLocal(); if(all[slotKey] && all[slotKey][id]){ delete all[slotKey][id]; if(!Object.keys(all[slotKey]).length) delete all[slotKey]; this.setLocal(all); window.dispatchEvent(new Event('storage')); }
+      },
+
+      async findByPhone(phone){
+        const all = await this.getAll(); const out = [];
+        for(const [slotKey, bucket] of Object.entries(all)){
+          for(const [id, rec] of Object.entries(bucket)){
+            if(rec.phone === phone){ out.push({ id, slotKey, ...rec }); }
+          }
+        }
+        return out;
+      }
+    };
+
+    /* ================= UI 與互動 ================= */
+    const dayNames = { '1':'週一', '2':'週二', '4':'週四', '5':'週五' };
+
+    function slotKeyOf(slot){ return `${slot.day}-${slot.time}`; }
+
+    function showPage(id){ document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+
+    function resetForm(){ ['name','lineId','studentName','phone','level'].forEach(id=>{ const el = document.getElementById(id); if(el) el.value=''; }); document.getElementById('formError').textContent=''; }
+
+    function toggleMenu(){ document.getElementById('menu').classList.toggle('open'); }
+
+    function openModal(id){ document.getElementById(id).style.display='block'; toggleMenu(); }
+    function closeModal(id){ document.getElementById(id).style.display='none'; }
+
+    // 事件：漢堡與選單
+    document.getElementById('hamburger').addEventListener('click', toggleMenu);
+    document.getElementById('miQuery').addEventListener('click', ()=>openModal('queryModal'));
+    document.getElementById('miCancel').addEventListener('click', ()=>openModal('cancelModal'));
+    document.getElementById('miCoach').addEventListener('click', ()=>openModal('coachModal'));
+    document.querySelectorAll('.close').forEach(el=>el.addEventListener('click', e=>closeModal(e.target.dataset.close)));
+    window.addEventListener('click', e=>{ if(e.target.classList.contains('modal')) e.target.style.display='none'; });
+
+    // 事件：首頁 -> 進入預約
+    document.getElementById('btnEnter').addEventListener('click', ()=>{
+      const name = document.getElementById('name').value.trim();
+      const lineId = document.getElementById('lineId').value.trim();
+      const studentName = document.getElementById('studentName').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const level = document.getElementById('level').value;
+      const err = document.getElementById('formError');
+
+      if(!name || !lineId || !studentName || !phone || !level){ err.textContent='請填寫所有必填欄位'; return; }
+      if(!/^[\d\-+()#\s]+$/.test(phone)){ err.textContent='請輸入有效的電話號碼'; return; }
+
+      state.currentUser = { name, lineId, studentName, phone, level };
+      err.textContent='';
+      showPage('reservationPage');
+      initialLoad();
+    });
+
+    // 事件：我是教練（無需填表）
+    document.getElementById('btnCoach').addEventListener('click', ()=>{
+      const pwd = prompt('
+
+    // 事件：返回
+    document.getElementById('btnBack').addEventListener('click', ()=>{
+      state.currentUser = null; state.isCoach = false; state.selectedSlot = null; document.getElementById('studentInfo').classList.remove('show'); showPage('homePage'); resetForm();
+    });
+
+    // 點擊時段格子
+    document.getElementById('scheduleGrid').addEventListener('click', e=>{
+      const t = e.target.closest('.time-slot');
+      if(!t || !t.dataset || !t.dataset.day || t.hasAttribute('data-disabled')) return;
+      if(t.classList.contains('occupied')){ // 已滿
+        selectNone();
+        const info = document.getElementById('studentInfo'); info.classList.add('show');
+        const details = document.getElementById('slotDetails');
+        const day = t.dataset.day, time = t.dataset.time; const key = `${day}-${time}`;
+        details.innerHTML = `<h5>${dayNames[day]} ${time}</h5><p style="color:#a33">此時段已額滿，無法報名。</p>`;
+        document.getElementById('registerBtn').style.display='none';
+        document.getElementById('slotMessage').textContent='';
+        return;
+      }
+
+      // 切換選取狀態
+      document.querySelectorAll('.time-slot').forEach(s=>s.classList.remove('selected'));
+      t.classList.add('selected');
+      state.selectedSlot = { day:t.dataset.day, time:t.dataset.time };
+      showSlotDetails(state.selectedSlot);
+    });
+
+    function selectNone(){ document.querySelectorAll('.time-slot').forEach(s=>s.classList.remove('selected')); state.selectedSlot = null; }
+
+    async function initialLoad(){
+      try{
+        const data = await DataManager.getAll();
+        state.reservationsCache = data; updateGridFromData(data);
+      }catch(e){ console.error('載入資料失敗：', e); markAllAvailable(); }
+    }
+
+    function markAllAvailable(){
+      document.querySelectorAll('.time-slot').forEach(el=>{
+        if(el.dataset.day){
+          el.textContent = `可預約 (0/${CAPACITY})`;
+          el.classList.remove('occupied');
+          el.classList.add('available');
+        }
+      });
+    }
+
+    function updateGridFromData(all){
+      document.querySelectorAll('.time-slot').forEach(el=>{
+        if(!el.dataset.day){ el.style.background='#f0f0f0'; el.style.cursor='default'; return; }
+        const key = `${el.dataset.day}-${el.dataset.time}`;
+        const bucket = all[key];
+        const count = bucket ? Object.keys(bucket).length : 0;
+        if(count >= CAPACITY){
+          el.textContent = `額滿 (${count}/${CAPACITY})`;
+          el.classList.remove('available');
+          el.classList.add('occupied');
+        } else {
+          el.textContent = `可預約 (${count}/${CAPACITY})`;
+          el.classList.remove('occupied');
+          el.classList.add('available');
+        }
+      });
+    }
+
+    async function showSlotDetails(slot){
+      const key = slotKeyOf(slot);
+      const all = state.reservationsCache && Object.keys(state.reservationsCache).length ? state.reservationsCache : await DataManager.getAll();
+      const students = all[key] || {};
+
+      const wrap = document.getElementById('studentInfo');
+      const details = document.getElementById('slotDetails');
+      const regBtn = document.getElementById('registerBtn');
+      const msg = document.getElementById('slotMessage');
+
+      const count = Object.keys(students).length;
+      const remaining = Math.max(0, CAPACITY - count);
+
+      let html = `<h4>${dayNames[slot.day]} ${slot.time}</h4>`;
+      if(count === 0){
+        html += '<p style="color:#666;margin:8px 0">此時段尚無學員預約</p>';
+      } else {
+        html += `<h5>已預約學員（${count}/${CAPACITY}）：</h5>`;
+        for(const s of Object.values(students)){
+          html += `<div class="reservation-item">
+            <div style="display:flex;align-items:center;gap:8px">
+              <strong>${escapeHtml(s.studentName)}</strong>
+              <span class="level-badge level-${s.level}">${s.level}</span>
             </div>
-            <div id="query-result" class="text-center text-sm text-gray-600"></div>
-        </div>
-    </div>
-
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, addDoc, query, where, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
-        
-        // Firebase project configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyDrevpcWddVfJRqRcyxqMR70af_GAIXlFQ",
-            authDomain: "coach-reservation.firebaseapp.com",
-            projectId: "coach-reservation",
-            storageBucket: "coach-reservation.firebasestorage.app",
-            messagingSenderId: "580815027044",
-            appId: "1:580815027044:web:3fc66b1fd0d797d7f31871"
-        };
-        
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        // UI elements
-        const popupModal = document.getElementById('popupModal');
-        const mainContent = document.getElementById('mainContent');
-        const bookingForm = document.getElementById('bookingForm');
-        const calendar = document.getElementById('calendar');
-        const bookingStatus = document.getElementById('booking-status');
-        const queryPhoneInput = document.getElementById('queryPhone');
-        const queryResult = document.getElementById('query-result');
-
-        // Pre-defined available time slots
-        const availableSlots = {
-            1: [17, 18, 19], // 週一 (17:00, 18:00, 19:00)
-            2: [19],         // 週二 (19:00)
-            4: [19],         // 週四 (19:00)
-            5: [17, 18, 19], // 週五 (17:00, 18:00, 19:00)
-        };
-        
-        // Maximum number of students per class
-        const MAX_STUDENTS_PER_CLASS = 4;
-
-        // Display popup on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            popupModal.classList.remove('hidden');
-            popupModal.classList.add('flex');
-        });
-
-        // Handle form submission
-        bookingForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const name = document.getElementById('name').value;
-            const lineId = document.getElementById('lineId').value;
-            const phone = document.getElementById('phone').value;
-            const studentName = document.getElementById('studentName').value;
-            const level = document.getElementById('level').value;
-
-            try {
-                // Save student data to the 'students' collection
-                await addDoc(collection(db, 'students'), {
-                    name,
-                    lineId,
-                    phone,
-                    studentName,
-                    level,
-                    timestamp: new Date()
-                });
-                console.log("學員資料已儲存");
-
-                // Hide the popup and show main content
-                popupModal.classList.remove('flex');
-                popupModal.classList.add('hidden');
-                mainContent.classList.remove('hidden');
-            } catch (e) {
-                console.error("儲存學員資料失敗: ", e);
-                bookingStatus.textContent = "儲存資料失敗，請稍後再試。";
-            }
-        });
-
-        // Function to render the calendar based on booking counts
-        function renderCalendar(bookingCounts) {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday, 1 = Monday...
-
-            const dayHeaders = ['日', '一', '二', '三', '四', '五', '六'];
-            let html = dayHeaders.map(day => `<div class="day-header">${day}</div>`).join('');
-            
-            for (let i = 0; i < firstDayOfMonth; i++) {
-                html += `<div class="day-cell unavailable"></div>`;
-            }
-
-            for (let i = 1; i <= daysInMonth; i++) {
-                const day = new Date(year, month, i);
-                const dayOfWeek = day.getDay();
-                const slots = availableSlots[dayOfWeek];
-                const dateString = `${year}-${month + 1}-${i}`;
-
-                if (slots) {
-                    html += `<div class="day-cell">
-                                ${i}
-                                <div class="time-slots mt-2 space-y-1">
-                                    ${slots.map(time => {
-                                        const key = `${dateString}-${time}`;
-                                        const count = bookingCounts[key] || 0;
-                                        const isFull = count >= MAX_STUDENTS_PER_CLASS;
-                                        return `<div class="time-slot ${isFull ? 'full' : 'available'}" 
-                                                        data-date="${dateString}" 
-                                                        data-time="${time}" 
-                                                        data-day-of-week="${dayOfWeek}"
-                                                        data-is-full="${isFull}">
-                                                        ${time}:00
-                                                        <span class="text-xs">(${count}/${MAX_STUDENTS_PER_CLASS})</span>
-                                                    </div>`;
-                                    }).join('')}
-                                </div>
-                            </div>`;
-                } else {
-                    html += `<div class="day-cell unavailable">${i}</div>`;
-                }
-            }
-            calendar.innerHTML = html;
-            
-            // Bind click event to available slots
-            document.querySelectorAll('.time-slot.available').forEach(slot => {
-                slot.addEventListener('click', async () => {
-                    const date = slot.dataset.date;
-                    const time = slot.dataset.time;
-                    const dayOfWeek = slot.dataset.dayOfWeek;
-                    const studentName = document.getElementById('studentName').value;
-                    const phone = document.getElementById('phone').value;
-
-                    // Remove previous selected effects
-                    document.querySelectorAll('.selected').forEach(s => s.classList.remove('selected'));
-
-                    // Select all similar time slots for the month
-                    document.querySelectorAll(`.day-cell .time-slot[data-day-of-week='${dayOfWeek}'][data-time='${time}']`).forEach(s => {
-                        s.classList.add('selected');
-                    });
-
-                    // Save the booking to the 'bookings' collection
-                    try {
-                        await addDoc(collection(db, 'bookings'), {
-                            studentName,
-                            phone,
-                            date,
-                            time,
-                            dayOfWeek: parseInt(dayOfWeek),
-                            timestamp: new Date()
-                        });
-                        bookingStatus.textContent = `${studentName} 已經成功預約 ${date} ${time}:00！`;
-                    } catch (e) {
-                        console.error("預約失敗: ", e);
-                        bookingStatus.textContent = "預約失敗，請稍後再試。";
-                    }
-                });
-            });
+            <div style="font-size:13px;color:#666;margin-top:4px">聯絡人：${escapeHtml(s.name)} ｜ Line：${escapeHtml(s.lineId)} ｜ 電話：${escapeHtml(s.phone)}</div>
+          </div>`;
         }
-        
-        // Listen for real-time changes to the 'bookings' collection
-        onSnapshot(collection(db, 'bookings'), (snapshot) => {
-            const bookingCounts = {};
-            snapshot.forEach(doc => {
-                const booking = doc.data();
-                const key = `${booking.date}-${booking.time}`;
-                bookingCounts[key] = (bookingCounts[key] || 0) + 1;
-            });
-            // Re-render calendar with new booking counts
-            renderCalendar(bookingCounts);
-        });
+      }
+      details.innerHTML = html;
+      wrap.classList.add('show');
 
-        // Query booking function
-        async function queryBooking() {
-            const phone = queryPhoneInput.value;
-            if (!phone) {
-                queryResult.textContent = "請輸入電話號碼。";
-                return;
-            }
-            queryResult.textContent = "查詢中...";
+      const full = count >= CAPACITY;
+      const canRegister = !full && !!state.currentUser && !state.isCoach;
+      regBtn.style.display = canRegister ? 'inline-block' : 'none';
 
-            try {
-                const q = query(collection(db, 'bookings'), where('phone', '==', phone));
-                const querySnapshot = await getDocs(q);
-                
-                if (querySnapshot.empty) {
-                    queryResult.textContent = `電話號碼 ${phone} 沒有任何預約記錄。`;
-                } else {
-                    let resultHtml = `找到 ${querySnapshot.size} 筆預約：<br>`;
-                    querySnapshot.forEach(doc => {
-                        const data = doc.data();
-                        resultHtml += `- ${data.date} ${data.time}:00<br>`;
-                    });
-                    queryResult.innerHTML = resultHtml;
-                }
-            } catch (e) {
-                console.error("查詢預約失敗: ", e);
-                queryResult.textContent = "查詢失敗，請稍後再試。";
-            }
+      if(full){ msg.textContent = '此時段已額滿'; msg.className='error'; }
+      else if(!state.currentUser){ msg.textContent='請先返回首頁填寫資料再預約'; msg.className='error'; }
+      else { msg.textContent = `尚有 ${remaining} 位可報名`; msg.className='success'; }
+    }
+
+    // 防 XSS 簡單轉義
+    function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll('\'','&#39;'); }
+
+    // 報名此時段
+    document.getElementById('registerBtn').addEventListener('click', async ()=>{
+      if(!state.selectedSlot) return;
+      if(!state.currentUser){ alert('請先返回首頁填寫資料'); return; }
+      const key = slotKeyOf(state.selectedSlot);
+
+      // 最新資料檢查（避免並發）
+      const all = await DataManager.getAll();
+      const bucket = all[key] || {};
+      const count = Object.keys(bucket).length;
+
+      if(count >= CAPACITY){
+        alert('很抱歉，此時段已滿。');
+        await initialLoad();
+        return;
+      }
+
+      // 重複檢查：同電話同時段禁止
+      for(const rec of Object.values(bucket)){
+        if(rec.phone === state.currentUser.phone){ alert('您已預約此時段'); return; }
+      }
+
+      const rec = { ...state.currentUser, timestamp: Date.now() };
+      await DataManager.add(key, rec);
+      state.reservationsCache = await DataManager.getAll();
+      updateGridFromData(state.reservationsCache);
+      showSlotDetails(state.selectedSlot);
+      alert('預約成功！');
+    });
+
+    /* ===== 查詢 / 取消 / 教練 ===== */
+    document.getElementById('btnQueryDo').addEventListener('click', async ()=>{
+      const phone = (document.getElementById('queryPhone').value||'').trim();
+      const box = document.getElementById('queryResult');
+      if(!phone){ box.innerHTML = '<p class="error">請輸入電話</p>'; return; }
+      const rows = await DataManager.findByPhone(phone);
+      if(!rows.length){ box.innerHTML = '<p style="color:#666">沒有找到預約紀錄</p>'; return; }
+      rows.sort((a,b)=>a.timestamp-b.timestamp);
+      box.innerHTML = rows.map(r=>renderRow(r,true)).join('');
+    });
+
+    document.getElementById('btnCancelList').addEventListener('click', async ()=>{
+      const phone = (document.getElementById('cancelPhone').value||'').trim();
+      const box = document.getElementById('cancelResult');
+      if(!phone){ box.innerHTML = '<p class="error">請輸入電話</p>'; return; }
+      const rows = await DataManager.findByPhone(phone);
+      if(!rows.length){ box.innerHTML = '<p style="color:#666">找不到可取消的預約</p>'; return; }
+      rows.sort((a,b)=>a.timestamp-b.timestamp);
+      box.innerHTML = rows.map(r=>renderCancelable(r)).join('');
+      box.querySelectorAll('[data-cancel]').forEach(btn=>btn.addEventListener('click', async (e)=>{
+        const id = e.currentTarget.getAttribute('data-id');
+        const slotKey = e.currentTarget.getAttribute('data-slot');
+        if(confirm('確認取消這筆預約？')){
+          await DataManager.remove(slotKey, id);
+          // 更新畫面
+          (e.currentTarget.closest('.reservation-item')).remove();
+          state.reservationsCache = await DataManager.getAll(); updateGridFromData(state.reservationsCache);
         }
+      }));
+    });
 
-        // Cancel booking function
-        async function cancelBooking() {
-            const phone = queryPhoneInput.value;
-            if (!phone) {
-                queryResult.textContent = "請輸入電話號碼。";
-                return;
-            }
-            queryResult.textContent = "取消中...";
-            
-            try {
-                const q = query(collection(db, 'bookings'), where('phone', '==', phone));
-                const querySnapshot = await getDocs(q);
-
-                if (querySnapshot.empty) {
-                    queryResult.textContent = `電話號碼 ${phone} 沒有任何預約記錄可供取消。`;
-                } else {
-                    const deletePromises = [];
-                    querySnapshot.forEach(doc => {
-                        deletePromises.push(deleteDoc(doc.ref));
-                    });
-                    await Promise.all(deletePromises);
-                    queryResult.textContent = `已成功取消 ${querySnapshot.size} 筆預約。`;
-                    // The onSnapshot listener will automatically re-render the calendar
-                }
-            } catch (e) {
-                console.error("取消預約失敗: ", e);
-                queryResult.textContent = "取消失敗，請稍後再試。";
-            }
+    document.getElementById('btnLoadAll').addEventListener('click', async ()=>{
+      const container = document.getElementById('coachResult');
+      const all = await DataManager.getAll();
+      const keys = Object.keys(all).sort();
+      if(!keys.length){ container.innerHTML = '<p style="color:#666">目前沒有任何預約</p>'; return; }
+      const parts = [];
+      for(const key of keys){
+        const [day, time] = key.split('-');
+        parts.push(`<h4 style="margin:14px 0">${dayNames[day]} ${time}</h4>`);
+        for(const [id, rec] of Object.entries(all[key])){
+          parts.push(renderRow({id, slotKey:key, ...rec}, false));
         }
+      }
+      container.innerHTML = parts.join('');
+    });
 
-        window.queryBooking = queryBooking;
-        window.cancelBooking = cancelBooking;
-    </script>
+    function tsToString(ts){ const d = new Date(ts); const pad=n=>(''+n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+
+    function renderRow(r, showSlot){
+      const [day, time] = r.slotKey.split('-');
+      return `<div class="reservation-item">
+        <div style="display:flex;align-items:center;gap:8px"><strong>${escapeHtml(r.studentName)}</strong><span class="level-badge level-${r.level}">${r.level}</span></div>
+        <div style="font-size:13px;color:#666;margin-top:4px">聯絡人：${escapeHtml(r.name)} ｜ Line：${escapeHtml(r.lineId)} ｜ 電話：${escapeHtml(r.phone)}</div>
+        <div style="font-size:12px;color:${showSlot?'#495057':'#888'};margin-top:4px">${showSlot?`${dayNames[day]} ${time} ｜ `:''}建立：${tsToString(r.timestamp||Date.now())} ｜ ID：${r.id}</div>
+      </div>`;
+    }
+
+    function renderCancelable(r){
+      const [day, time] = r.slotKey.split('-');
+      return `<div class="reservation-item">
+        <div style="display:flex;align-items:center;gap:8px"><strong>${escapeHtml(r.studentName)}</strong><span class="level-badge level-${r.level}">${r.level}</span></div>
+        <div style="font-size:13px;color:#666;margin-top:4px">${dayNames[day]} ${time}</div>
+        <button class="btn" style="margin-top:8px" data-cancel data-id="${r.id}" data-slot="${r.slotKey}">取消這筆</button>
+      </div>`;
+    }
+
+    // 本地 storage 變更時（跨分頁同步）
+    window.addEventListener('storage', async ()=>{
+      if(!(state.firebase.initialized && state.firebase.connected)){
+        const all = DataManager.getLocal(); state.reservationsCache = all; updateGridFromData(all);
+        if(state.selectedSlot) showSlotDetails(state.selectedSlot);
+      }
+    });
+
+    // 進站時先畫一次
+    initialLoad();
+
+    // ===== 公用工具：建立一次表格的 aria-label 方便測試（可忽略） =====
+    document.querySelectorAll('.time-slot[data-day]').forEach(el=>{
+      el.setAttribute('aria-label', `${dayNames[el.dataset.day]} ${el.dataset.time}`);
+    });
+
+  </script>
 </body>
 </html>
