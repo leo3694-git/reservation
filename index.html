@@ -203,13 +203,13 @@
 
     // TODO: 將以下替換成你的 Firebase 設定；若留空或錯誤，系統會自動切換為離線本地模式
     const firebaseConfig = {
-      apiKey: "",
-      authDomain: "",
-      databaseURL: "",
-      projectId: "",
-      storageBucket: "",
-      messagingSenderId: "",
-      appId: ""
+      apiKey: "AIzaSyDrevpcWddVfJRqRcyxqMR70af_GAIXlFQ",
+      authDomain: "coach-reservation.firebaseapp.com",
+      databaseURL: "https://coach-reservation-default-rtdb.firebaseio.com",
+      projectId: "coach-reservation",
+      storageBucket: "coach-reservation.firebasestorage.app",
+      messagingSenderId: "580815027044",
+      appId: "1:580815027044:web:3fc66b1fd0d797d7f31871"
     };
 
     const state = {
@@ -219,6 +219,8 @@
       isCoach: false,
       reservationsCache: {} // 最新載入的 reservations（方便重繪）
     };
+    // DEBUG: 在瀏覽器 console 可輸入 __DBG 查看即時狀態
+    window.__DBG = state;
 
     const CAPACITY = 4;
 
@@ -228,32 +230,45 @@
       else { el.textContent='離線模式'; el.className='status-indicator status-offline'; }
     }
 
-    // 嘗試初始化 Firebase
-    try {
-      const app = initializeApp(firebaseConfig);
-      const db = getDatabase(app);
-      state.firebase.db = db; state.firebase.initialized = true;
-
-      // 監聽連線狀態
-      const connectedRef = ref(db, '.info/connected');
-      onValue(connectedRef, snap => {
-        state.firebase.connected = !!snap.val();
-        setStatus(state.firebase.connected);
-      });
-
-      // 監聽 reservations 即時更新
-      const rref = ref(db, 'reservations');
-      onValue(rref, snap => {
-        const data = snap.val() || {};
-        state.reservationsCache = data;
-        updateGridFromData(data);
-        // 若正在看詳情，重新渲染
-        if(state.selectedSlot){ showSlotDetails(state.selectedSlot); }
-      });
-
-    } catch (err) {
-      console.warn('Firebase 初始化失敗，改用本地模式：', err);
+    // 嘗試初始化 Firebase（若缺少必要設定，直接離線）
+    const REQUIRED = ['apiKey','projectId','appId','databaseURL'];
+    const missing = REQUIRED.filter(k=>!firebaseConfig[k]);
+    if(missing.length){
+      console.warn('Firebase config 缺少欄位：', missing);
       setStatus(false);
+    } else {
+      try {
+        console.log('初始化 Firebase，databaseURL =', firebaseConfig.databaseURL);
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app, firebaseConfig.databaseURL);
+        state.firebase.db = db; state.firebase.initialized = true;
+
+        // 監聽連線狀態
+        const connectedRef = ref(db, '.info/connected');
+        onValue(connectedRef, snap => {
+          state.firebase.connected = !!snap.val();
+          setStatus(state.firebase.connected);
+        }, err => {
+          console.error('connected 監聽錯誤：', err);
+          setStatus(false);
+        });
+
+        // 監聽 reservations 即時更新
+        const rref = ref(db, 'reservations');
+        onValue(rref, snap => {
+          const data = snap.val() || {};
+          state.reservationsCache = data;
+          updateGridFromData(data);
+          if(state.selectedSlot){ showSlotDetails(state.selectedSlot); }
+        }, err => {
+          console.error('reservations 監聽錯誤（可能是規則拒絕或 URL 錯）：', err);
+          // 若規則拒絕但仍已連線，保持狀態徽章為連線中；僅提示錯誤
+        });
+
+      } catch (err) {
+        console.warn('Firebase 初始化失敗，改用本地模式：', err);
+        setStatus(false);
+      }
     }
 
     /* ================= 資料存取層（Firebase + localStorage 備援） ================= */
@@ -324,7 +339,14 @@
     document.getElementById('hamburger').addEventListener('click', toggleMenu);
     document.getElementById('miQuery').addEventListener('click', ()=>openModal('queryModal'));
     document.getElementById('miCancel').addEventListener('click', ()=>openModal('cancelModal'));
-    document.getElementById('miCoach').addEventListener('click', ()=>openModal('coachModal'));
+    document.getElementById('miCoach').addEventListener('click', ()=>{
+      if(!state.isCoach){
+        const pwd = prompt('請輸入教練區密碼');
+        if(pwd !== 'admin') { alert('密碼錯誤'); return; }
+        state.isCoach = true;
+      }
+      openModal('coachModal');
+    });
     document.querySelectorAll('.close').forEach(el=>el.addEventListener('click', e=>closeModal(e.target.dataset.close)));
     window.addEventListener('click', e=>{ if(e.target.classList.contains('modal')) e.target.style.display='none'; });
 
@@ -348,7 +370,14 @@
 
     // 事件：我是教練（無需填表）
     document.getElementById('btnCoach').addEventListener('click', ()=>{
-      const pwd = prompt('
+      const pwd = prompt('請輸入教練區密碼');
+      if(pwd === 'admin'){
+        state.isCoach = true; state.currentUser = null; showPage('reservationPage'); initialLoad();
+        alert('已進入教練模式');
+      } else if (pwd !== null) {
+        alert('密碼錯誤');
+      }
+    });
 
     // 事件：返回
     document.getElementById('btnBack').addEventListener('click', ()=>{
