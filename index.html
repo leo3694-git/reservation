@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>課程預約系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: "Inter", sans-serif; background-color: #f3f4f6; }
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex; justify-content: center; align-items: center;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        .day-header, .day-cell {
+            padding: 8px; text-align: center; font-size: 0.875rem;
+            border-radius: 0.375rem;
+        }
+        .day-header { font-weight: 600; color: #4b5563; }
+        .unavailable {
+            background-color: #f3f4f6; color: #d1d5db; cursor: not-allowed;
+        }
+        .available {
+            background-color: #d1fae5; color: #10b981; cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+        .available:hover {
+            background-color: #10b981; color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .full {
+            background-color: #fecaca; color: #ef4444; cursor: not-allowed;
+            position: relative;
+        }
+        .selected {
+            background-color: #3b82f6; color: white;
+            transform: scale(1.05);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .time-slot {
+            padding: 4px 8px; border-radius: 0.25rem; font-size: 0.75rem;
+            margin-top: 4px; transition: all 0.2s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <!-- 彈窗表單 -->
+    <div id="popupModal" class="modal-overlay z-50">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-lg mx-4">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">學員資料填寫</h2>
+            <form id="bookingForm" class="space-y-4">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700">名字</label>
+                    <input type="text" id="name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="lineId" class="block text-sm font-medium text-gray-700">Line ID</label>
+                    <input type="text" id="lineId" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="phone" class="block text-sm font-medium text-gray-700">電話</label>
+                    <input type="tel" id="phone" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="studentName" class="block text-sm font-medium text-gray-700">學員名字</label>
+                    <input type="text" id="studentName" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="level" class="block text-sm font-medium text-gray-700">學員程度</label>
+                    <select id="level" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="初級">初級</option>
+                        <option value="中級">中級</option>
+                        <option value="高級">高級</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out shadow-md">送出</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 主頁面 -->
+    <div id="mainContent" class="hidden container mx-auto p-8 bg-white rounded-xl shadow-2xl">
+        <h1 class="text-4xl font-bold text-gray-800 mb-6 text-center">課程預約系統</h1>
+        <div id="booking-status" class="text-center font-semibold text-lg mb-6"></div>
+        <div class="calendar-grid" id="calendar"></div>
+
+        <hr class="my-10 border-t border-gray-200">
+
+        <div class="space-y-6">
+            <h2 class="text-2xl font-bold text-gray-800 text-center">查詢或取消預約</h2>
+            <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+                <input type="tel" id="queryPhone" placeholder="輸入電話號碼" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm w-full sm:w-auto">
+                <div class="flex space-x-4">
+                    <button onclick="queryBooking()" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out w-full sm:w-auto">查詢</button>
+                    <button onclick="cancelBooking()" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200 ease-in-out w-full sm:w-auto">取消</button>
+                </div>
+            </div>
+            <div id="query-result" class="text-center text-sm text-gray-600"></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, addDoc, query, where, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+        
+        // Firebase project configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDrevpcWddVfJRqRcyxqMR70af_GAIXlFQ",
+            authDomain: "coach-reservation.firebaseapp.com",
+            projectId: "coach-reservation",
+            storageBucket: "coach-reservation.firebasestorage.app",
+            messagingSenderId: "580815027044",
+            appId: "1:580815027044:web:3fc66b1fd0d797d7f31871"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // UI elements
+        const popupModal = document.getElementById('popupModal');
+        const mainContent = document.getElementById('mainContent');
+        const bookingForm = document.getElementById('bookingForm');
+        const calendar = document.getElementById('calendar');
+        const bookingStatus = document.getElementById('booking-status');
+        const queryPhoneInput = document.getElementById('queryPhone');
+        const queryResult = document.getElementById('query-result');
+
+        // Pre-defined available time slots
+        const availableSlots = {
+            1: [17, 18, 19], // 週一 (17:00, 18:00, 19:00)
+            2: [19],         // 週二 (19:00)
+            4: [19],         // 週四 (19:00)
+            5: [17, 18, 19], // 週五 (17:00, 18:00, 19:00)
+        };
+        
+        // Maximum number of students per class
+        const MAX_STUDENTS_PER_CLASS = 4;
+
+        // Display popup on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            popupModal.classList.remove('hidden');
+            popupModal.classList.add('flex');
+        });
+
+        // Handle form submission
+        bookingForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const lineId = document.getElementById('lineId').value;
+            const phone = document.getElementById('phone').value;
+            const studentName = document.getElementById('studentName').value;
+            const level = document.getElementById('level').value;
+
+            try {
+                // Save student data to the 'students' collection
+                await addDoc(collection(db, 'students'), {
+                    name,
+                    lineId,
+                    phone,
+                    studentName,
+                    level,
+                    timestamp: new Date()
+                });
+                console.log("學員資料已儲存");
+
+                // Hide the popup and show main content
+                popupModal.classList.remove('flex');
+                popupModal.classList.add('hidden');
+                mainContent.classList.remove('hidden');
+            } catch (e) {
+                console.error("儲存學員資料失敗: ", e);
+                bookingStatus.textContent = "儲存資料失敗，請稍後再試。";
+            }
+        });
+
+        // Function to render the calendar based on booking counts
+        function renderCalendar(bookingCounts) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday, 1 = Monday...
+
+            const dayHeaders = ['日', '一', '二', '三', '四', '五', '六'];
+            let html = dayHeaders.map(day => `<div class="day-header">${day}</div>`).join('');
+            
+            for (let i = 0; i < firstDayOfMonth; i++) {
+                html += `<div class="day-cell unavailable"></div>`;
+            }
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const day = new Date(year, month, i);
+                const dayOfWeek = day.getDay();
+                const slots = availableSlots[dayOfWeek];
+                const dateString = `${year}-${month + 1}-${i}`;
+
+                if (slots) {
+                    html += `<div class="day-cell">
+                                ${i}
+                                <div class="time-slots mt-2 space-y-1">
+                                    ${slots.map(time => {
+                                        const key = `${dateString}-${time}`;
+                                        const count = bookingCounts[key] || 0;
+                                        const isFull = count >= MAX_STUDENTS_PER_CLASS;
+                                        return `<div class="time-slot ${isFull ? 'full' : 'available'}" 
+                                                        data-date="${dateString}" 
+                                                        data-time="${time}" 
+                                                        data-day-of-week="${dayOfWeek}"
+                                                        data-is-full="${isFull}">
+                                                        ${time}:00
+                                                        <span class="text-xs">(${count}/${MAX_STUDENTS_PER_CLASS})</span>
+                                                    </div>`;
+                                    }).join('')}
+                                </div>
+                            </div>`;
+                } else {
+                    html += `<div class="day-cell unavailable">${i}</div>`;
+                }
+            }
+            calendar.innerHTML = html;
+            
+            // Bind click event to available slots
+            document.querySelectorAll('.time-slot.available').forEach(slot => {
+                slot.addEventListener('click', async () => {
+                    const date = slot.dataset.date;
+                    const time = slot.dataset.time;
+                    const dayOfWeek = slot.dataset.dayOfWeek;
+                    const studentName = document.getElementById('studentName').value;
+                    const phone = document.getElementById('phone').value;
+
+                    // Remove previous selected effects
+                    document.querySelectorAll('.selected').forEach(s => s.classList.remove('selected'));
+
+                    // Select all similar time slots for the month
+                    document.querySelectorAll(`.day-cell .time-slot[data-day-of-week='${dayOfWeek}'][data-time='${time}']`).forEach(s => {
+                        s.classList.add('selected');
+                    });
+
+                    // Save the booking to the 'bookings' collection
+                    try {
+                        await addDoc(collection(db, 'bookings'), {
+                            studentName,
+                            phone,
+                            date,
+                            time,
+                            dayOfWeek: parseInt(dayOfWeek),
+                            timestamp: new Date()
+                        });
+                        bookingStatus.textContent = `${studentName} 已經成功預約 ${date} ${time}:00！`;
+                    } catch (e) {
+                        console.error("預約失敗: ", e);
+                        bookingStatus.textContent = "預約失敗，請稍後再試。";
+                    }
+                });
+            });
+        }
+        
+        // Listen for real-time changes to the 'bookings' collection
+        onSnapshot(collection(db, 'bookings'), (snapshot) => {
+            const bookingCounts = {};
+            snapshot.forEach(doc => {
+                const booking = doc.data();
+                const key = `${booking.date}-${booking.time}`;
+                bookingCounts[key] = (bookingCounts[key] || 0) + 1;
+            });
+            // Re-render calendar with new booking counts
+            renderCalendar(bookingCounts);
+        });
+
+        // Query booking function
+        async function queryBooking() {
+            const phone = queryPhoneInput.value;
+            if (!phone) {
+                queryResult.textContent = "請輸入電話號碼。";
+                return;
+            }
+            queryResult.textContent = "查詢中...";
+
+            try {
+                const q = query(collection(db, 'bookings'), where('phone', '==', phone));
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    queryResult.textContent = `電話號碼 ${phone} 沒有任何預約記錄。`;
+                } else {
+                    let resultHtml = `找到 ${querySnapshot.size} 筆預約：<br>`;
+                    querySnapshot.forEach(doc => {
+                        const data = doc.data();
+                        resultHtml += `- ${data.date} ${data.time}:00<br>`;
+                    });
+                    queryResult.innerHTML = resultHtml;
+                }
+            } catch (e) {
+                console.error("查詢預約失敗: ", e);
+                queryResult.textContent = "查詢失敗，請稍後再試。";
+            }
+        }
+
+        // Cancel booking function
+        async function cancelBooking() {
+            const phone = queryPhoneInput.value;
+            if (!phone) {
+                queryResult.textContent = "請輸入電話號碼。";
+                return;
+            }
+            queryResult.textContent = "取消中...";
+            
+            try {
+                const q = query(collection(db, 'bookings'), where('phone', '==', phone));
+                const querySnapshot = await getDocs(q);
+
+                if (querySnapshot.empty) {
+                    queryResult.textContent = `電話號碼 ${phone} 沒有任何預約記錄可供取消。`;
+                } else {
+                    const deletePromises = [];
+                    querySnapshot.forEach(doc => {
+                        deletePromises.push(deleteDoc(doc.ref));
+                    });
+                    await Promise.all(deletePromises);
+                    queryResult.textContent = `已成功取消 ${querySnapshot.size} 筆預約。`;
+                    // The onSnapshot listener will automatically re-render the calendar
+                }
+            } catch (e) {
+                console.error("取消預約失敗: ", e);
+                queryResult.textContent = "取消失敗，請稍後再試。";
+            }
+        }
+
+        window.queryBooking = queryBooking;
+        window.cancelBooking = cancelBooking;
+    </script>
+</body>
+</html>
