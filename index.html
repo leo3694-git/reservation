@@ -388,14 +388,11 @@
     document.getElementById('scheduleGrid').addEventListener('click', e=>{
       const t = e.target.closest('.time-slot');
       if(!t || !t.dataset || !t.dataset.day || t.hasAttribute('data-disabled')) return;
-      if(t.classList.contains('occupied')){ // 已滿
-        selectNone();
-        const info = document.getElementById('studentInfo'); info.classList.add('show');
-        const details = document.getElementById('slotDetails');
-        const day = t.dataset.day, time = t.dataset.time; const key = `${day}-${time}`;
-        details.innerHTML = `<h5>${dayNames[day]} ${time}</h5><p style="color:#a33">此時段已額滿，無法報名。</p>`;
-        document.getElementById('registerBtn').style.display='none';
-        document.getElementById('slotMessage').textContent='';
+      if(t.classList.contains('occupied')){ // 額滿也顯示詳情（含名單），但不可報名
+        document.querySelectorAll('.time-slot').forEach(s=>s.classList.remove('selected'));
+        t.classList.add('selected');
+        state.selectedSlot = { day:t.dataset.day, time:t.dataset.time };
+        showSlotDetails(state.selectedSlot);
         return;
       }
 
@@ -462,13 +459,14 @@
       } else {
         html += `<h5>已預約學員（${count}/${CAPACITY}）：</h5>`;
         for(const s of Object.values(students)){
-          html += `<div class="reservation-item">
-            <div style="display:flex;align-items:center;gap:8px">
-              <strong>${escapeHtml(s.studentName)}</strong>
-              <span class="level-badge level-${s.level}">${s.level}</span>
-            </div>
-            <div style="font-size:13px;color:#666;margin-top:4px">聯絡人：${escapeHtml(s.name)} ｜ Line：${escapeHtml(s.lineId)} ｜ 電話：${escapeHtml(s.phone)}</div>
-          </div>`;
+          html += `
+            <div class="reservation-item">
+              <div style="display:flex;align-items:center;gap:8px">
+                <strong>${escapeHtml(s.studentName)}</strong>
+                <span class="level-badge level-${s.level}">${s.level}</span>
+              </div>
+              ${ state.isCoach ? `<div style="font-size:13px;color:#666;margin-top:4px">聯絡人：${escapeHtml(s.name)} ｜ Line：${escapeHtml(s.lineId)} ｜ 電話：${escapeHtml(s.phone)}</div>` : '' }
+            </div>`;
         }
       }
       details.innerHTML = html;
@@ -514,7 +512,35 @@
       updateGridFromData(state.reservationsCache);
       showSlotDetails(state.selectedSlot);
       alert('預約成功！');
+
+      // 若已達開班人數，自動開成並清除重複預約
+      const newCount = Object.keys((state.reservationsCache[key] || {})).length;
+      if(newCount >= CAPACITY){
+        const removed = await finalizeClass(key);
+        if(removed > 0) alert(`此時段已開成，已自動清除 ${removed} 筆重複預約。`);
+      }
     });
+
+    // 開成：將該時段所有學員在其他時段的重複預約自動清除（以 phone 為判斷）
+    async function finalizeClass(slotKey){
+      const all = await DataManager.getAll();
+      const bucket = all[slotKey] || {};
+      const phones = new Set(Object.values(bucket).map(x=>x.phone));
+      let removed = 0;
+      for(const [k, b] of Object.entries(all)){
+        if(k === slotKey) continue;
+        for(const [id, rec] of Object.entries(b)){
+          if(phones.has(rec.phone)){
+            await DataManager.remove(k, id);
+            removed++;
+          }
+        }
+      }
+      state.reservationsCache = await DataManager.getAll();
+      updateGridFromData(state.reservationsCache);
+      if(state.selectedSlot) showSlotDetails(state.selectedSlot);
+      return removed;
+    }
 
     /* ===== 查詢 / 取消 / 教練 ===== */
     document.getElementById('btnQueryDo').addEventListener('click', async ()=>{
@@ -524,7 +550,7 @@
       const rows = await DataManager.findByPhone(phone);
       if(!rows.length){ box.innerHTML = '<p style="color:#666">沒有找到預約紀錄</p>'; return; }
       rows.sort((a,b)=>a.timestamp-b.timestamp);
-      box.innerHTML = rows.map(r=>renderRow(r,true)).join('');
+      box.innerHTML = rows.map(r=>renderRow(r,{showSlot:true, showContacts:false})).join('');
     });
 
     document.getElementById('btnCancelList').addEventListener('click', async ()=>{
@@ -555,40 +581,89 @@
       const parts = [];
       for(const key of keys){
         const [day, time] = key.split('-');
-        parts.push(`<h4 style="margin:14px 0">${dayNames[day]} ${time}</h4>`);
-        for(const [id, rec] of Object.entries(all[key])){
-          parts.push(renderRow({id, slotKey:key, ...rec}, false));
+        const bucket = all[key] || {};
+        const count = Object.keys(bucket).length;
+        parts.push(`<div class=\"coach-slot\" style=\"margin:10px 0 6px\"><h4 style=\"margin:8px 0\">${dayNames[day]} ${time}（${count}/${CAPACITY}）</h4><button class=\"btn\" data-finalize data-slot=\"${key}\">開成此時段（清除重複）</button></div>`);
+        for(const [id, rec] of Object.entries(bucket)){
+          parts.push(renderRow({id, slotKey:key, ...rec}, {showSlot:false, showContacts:true, allowDelete:true}));
         }
       }
       container.innerHTML = parts.join('');
+
+      // 事件代理：刪除 / 開成
+      container.addEventListener('click', async (e)=>{
+        const btn = e.target.closest('[data-del],[data-finalize]');
+        if(!btn) return;
+        if(btn.hasAttribute('data-del')){
+          const id = btn.getAttribute('data-id');
+          const slotKey = btn.getAttribute('data-slot');
+          if(confirm('確定要刪除此學員？')){
+            await DataManager.remove(slotKey, id);
+            state.reservationsCache = await DataManager.getAll();
+            updateGridFromData(state.reservationsCache);
+            // 重新載入清單
+            document.getElementById('btnLoadAll').click();
+          }
+        } else if(btn.hasAttribute('data-finalize')){
+          const slotKey = btn.getAttribute('data-slot');
+          const removed = await finalizeClass(slotKey);
+          alert(`此時段已開成，已自動清除 ${removed} 筆重複預約。`);
+          document.getElementById('btnLoadAll').click();
+        }
+      });
+    });
+      const all = await DataManager.getAll();
+      const keys = Object.keys(all).sort();
+      if(!keys.length){ container.innerHTML = '<p style="color:#666">目前沒有任何預約</p>'; return; }
+      const parts = [];
+      for(const key of keys){
+        const [day, time] = key.split('-');
+        const bucket = all[key] || {};
+        const count = Object.keys(bucket).length;
+        parts.push(`<div class="coach-slot" style="margin:10px 0 6px"><h4 style="margin:8px 0">${dayNames[day]} ${time}（${count}/${CAPACITY}）</h4><button class="btn" data-finalize data-slot="${key}">開成此時段（清除重複）</button></div>`);
+        for(const [id, rec] of Object.entries(bucket)){
+          parts.push(renderRow({id, slotKey:key, ...rec}, {showSlot:false, showContacts:true, allowDelete:true}));
+        }
+      }
+      container.innerHTML = parts.join('');
+
+      // 事件代理：刪除 / 開成
+      container.addEventListener('click', async (e)=>{
+        const btn = e.target.closest('[data-del],[data-finalize]');
+        if(!btn) return;
+        if(btn.hasAttribute('data-del')){
+          const id = btn.getAttribute('data-id');
+          const slotKey = btn.getAttribute('data-slot');
+          if(confirm('確定要刪除此學員？')){
+            await DataManager.remove(slotKey, id);
+            state.reservationsCache = await DataManager.getAll();
+            updateGridFromData(state.reservationsCache);
+            // 重新載入清單
+            document.getElementById('btnLoadAll').click();
+          }
+        } else if(btn.hasAttribute('data-finalize')){
+          const slotKey = btn.getAttribute('data-slot');
+          const removed = await finalizeClass(slotKey);
+          alert(`此時段已開成，已自動清除 ${removed} 筆重複預約。`);
+          document.getElementById('btnLoadAll').click();
+        }
+      });
     });
 
     function tsToString(ts){ const d = new Date(ts); const pad=n=>(''+n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 
-    function renderRow(r, showSlot){
+    function renderRow(r, opts = {}){
+      const showSlot = !!opts.showSlot;
+      const showContacts = opts.showContacts ?? state.isCoach;
+      const allowDelete = !!opts.allowDelete;
       const [day, time] = r.slotKey.split('-');
       return `<div class="reservation-item">
         <div style="display:flex;align-items:center;gap:8px"><strong>${escapeHtml(r.studentName)}</strong><span class="level-badge level-${r.level}">${r.level}</span></div>
-        <div style="font-size:13px;color:#666;margin-top:4px">聯絡人：${escapeHtml(r.name)} ｜ Line：${escapeHtml(r.lineId)} ｜ 電話：${escapeHtml(r.phone)}</div>
+        ${ showContacts ? `<div style="font-size:13px;color:#666;margin-top:4px">聯絡人：${escapeHtml(r.name)} ｜ Line：${escapeHtml(r.lineId)} ｜ 電話：${escapeHtml(r.phone)}</div>` : '' }
         <div style="font-size:12px;color:${showSlot?'#495057':'#888'};margin-top:4px">${showSlot?`${dayNames[day]} ${time} ｜ `:''}建立：${tsToString(r.timestamp||Date.now())} ｜ ID：${r.id}</div>
+        ${ allowDelete ? `<button class="btn" style="margin-top:8px" data-del data-id="${r.id}" data-slot="${r.slotKey}">刪除</button>` : '' }
       </div>`;
     }
-
-    function renderCancelable(r){
-      const [day, time] = r.slotKey.split('-');
-      return `<div class="reservation-item">
-        <div style="display:flex;align-items:center;gap:8px"><strong>${escapeHtml(r.studentName)}</strong><span class="level-badge level-${r.level}">${r.level}</span></div>
-        <div style="font-size:13px;color:#666;margin-top:4px">${dayNames[day]} ${time}</div>
-        <button class="btn" style="margin-top:8px" data-cancel data-id="${r.id}" data-slot="${r.slotKey}">取消這筆</button>
-      </div>`;
-    }
-
-    // 本地 storage 變更時（跨分頁同步）
-    window.addEventListener('storage', async ()=>{
-      if(!(state.firebase.initialized && state.firebase.connected)){
-        const all = DataManager.getLocal(); state.reservationsCache = all; updateGridFromData(all);
-        if(state.selectedSlot) showSlotDetails(state.selectedSlot);
-      }
     });
 
     // 進站時先畫一次
